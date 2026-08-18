@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="School Equipment Loan System">
+  <title>{% block title %}EquipTrack{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% if g.user %}
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="{{ url_for('dashboard') }}" aria-label="EquipTrack dashboard">
+        <span class="brand-mark" aria-hidden="true">E</span>
+        <span>EquipTrack<small>School loans</small></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a class="{{ 'active' if request.endpoint in ('equipment_list','equipment_new','equipment_edit') }}" href="{{ url_for('equipment_list') }}">Equipment</a>
+        <a class="{{ 'active' if request.endpoint == 'loans' }}" href="{{ url_for('loans') }}">{{ 'All loans' if g.user.role == 'admin' else 'My loans' }}</a>
+        {% if g.user.role == 'admin' %}
+        <span class="nav-label">Administration</span>
+        <a class="{{ 'active' if request.endpoint == 'audit_log' }}" href="{{ url_for('audit_log') }}">Audit log</a>
+        {% endif %}
+        <a class="{{ 'active' if request.endpoint == 'help_page' }}" href="{{ url_for('help_page') }}">Help & guide</a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="avatar" aria-hidden="true">{{ g.user.full_name[0] }}</div>
+        <div class="user-meta"><strong>{{ g.user.full_name }}</strong><small>{{ g.user.role|title }}</small></div>
+        <form method="post" action="{{ url_for('logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="icon-button" type="submit" title="Sign out" aria-label="Sign out">↪</button>
+        </form>
+      </div>
+    </aside>
+    <main class="main-content">
+      <header class="mobile-header">
+        <button id="menu-toggle" class="icon-button" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <strong>EquipTrack</strong>
+      </header>
+      <div class="page-wrap">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}<div aria-live="polite">
+            {% for category, message in messages %}<div class="alert {{ category }}">{{ message }}</div>{% endfor %}
+          </div>{% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  {% else %}
+    {% block public_content %}{% endblock %}
+  {% endif %}
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>
+

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign in | EquipTrack{% endblock %}
+{% block public_content %}
+<main class="login-layout">
+  <section class="login-hero">
+    <div class="brand light"><span class="brand-mark">E</span><span>EquipTrack<small>School loans</small></span></div>
+    <div>
+      <p class="eyebrow">Borrow smarter. Return on time.</p>
+      <h1>Every school resource,<br>ready when it matters.</h1>
+      <p>One secure place for cameras, laptops, sports equipment and instruments.</p>
+    </div>
+    <p class="hero-foot">Designed for students and equipment coordinators.</p>
+  </section>
+  <section class="login-panel">
+    <form method="post" class="login-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div><p class="eyebrow teal">Welcome back</p><h2>Sign in to EquipTrack</h2><p class="muted">Use your school equipment account.</p></div>
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="alert {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+      <label>Username<input name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="button primary full" type="submit">Sign in</button>
+      <div class="demo-note"><strong>Demo accounts</strong><span>Admin: admin / Admin123!</span><span>Borrower: student / Student123!</span></div>
+    </form>
+  </section>
+</main>
+{% endblock %}
+
