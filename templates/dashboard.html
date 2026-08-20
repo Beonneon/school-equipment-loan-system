@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | EquipTrack{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow teal">Overview</p><h1>Welcome, {{ g.user.full_name.split()[0] }}</h1><p>Here is what is happening with school equipment.</p></div><a class="button primary" href="{{ url_for('equipment_list') }}">Browse equipment</a></div>
+<section class="stats-grid" aria-label="Loan statistics">
+  <article class="stat-card"><span class="stat-icon blue">▦</span><div><strong>{{ counts['items'] }}</strong><span>Equipment types</span></div></article>
+  <article class="stat-card"><span class="stat-icon green">✓</span><div><strong>{{ counts['available'] }}</strong><span>Units available</span></div></article>
+  {% if g.user.role == 'admin' %}<article class="stat-card"><span class="stat-icon amber">◷</span><div><strong>{{ counts['pending'] }}</strong><span>Pending requests</span></div></article>{% else %}<article class="stat-card"><span class="stat-icon amber">◷</span><div><strong>{{ counts['active'] }}</strong><span>My active requests</span></div></article>{% endif %}
+  <article class="stat-card"><span class="stat-icon red">!</span><div><strong>{{ counts['overdue'] }}</strong><span>Overdue loans</span></div></article>
+</section>
+<section class="panel">
+  <div class="panel-heading"><div><h2>Recent loan activity</h2><p>{{ 'Latest requests across the school.' if g.user.role == 'admin' else 'Your latest requests and returns.' }}</p></div><a href="{{ url_for('loans') }}">View all →</a></div>
+  {% if loans %}
+  <div class="table-scroll"><table><thead><tr><th>Equipment</th>{% if g.user.role == 'admin' %}<th>Borrower</th>{% endif %}<th>Due</th><th>Qty</th><th>Status</th></tr></thead><tbody>
+    {% for loan in loans %}<tr><td><strong>{{ loan.equipment_name }}</strong><small>{{ loan.asset_code }}</small></td>{% if g.user.role == 'admin' %}<td>{{ loan.full_name }}</td>{% endif %}<td>{{ loan.due_date }}</td><td>{{ loan.quantity }}</td><td><span class="status {{ 'overdue' if is_overdue(loan) else loan.status }}">{{ 'Overdue' if is_overdue(loan) else loan.status|title }}</span></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty-state"><span>↗</span><h3>No loan activity yet</h3><p>Browse equipment to make the first request.</p></div>{% endif %}
+</section>
+{% endblock %}

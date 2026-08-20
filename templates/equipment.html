@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Equipment | EquipTrack{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow teal">Inventory</p><h1>Equipment catalogue</h1><p>Find and request the resources you need.</p></div>{% if g.user.role == 'admin' %}<a class="button primary" href="{{ url_for('equipment_new') }}">+ Add equipment</a>{% endif %}</div>
+<form class="filters" method="get">
+  <label class="search"><span>⌕</span><input name="q" value="{{ query }}" placeholder="Search name, asset code or description" aria-label="Search equipment"></label>
+  <select name="category" aria-label="Filter by category"><option value="">All categories</option>{% for row in categories %}<option {{ 'selected' if selected_category == row.category }}>{{ row.category }}</option>{% endfor %}</select>
+  <button class="button secondary" type="submit">Filter</button>
+  {% if query or selected_category %}<a class="button ghost" href="{{ url_for('equipment_list') }}">Clear</a>{% endif %}
+</form>
+<section class="equipment-grid">
+{% for item in items %}
+  <article class="equipment-card">
+    <div class="equipment-top"><span class="category-icon">{{ {'Cameras':'◉','Laptops':'▰','Sports':'◍','Instruments':'♫'}.get(item.category, '◆') }}</span><span class="stock {{ 'none' if item.available_quantity == 0 }}">{{ item.available_quantity }} available</span></div>
+    <div><p class="asset-code">{{ item.asset_code }}</p><h2>{{ item.name }}</h2><p>{{ item.description }}</p></div>
+    <dl><div><dt>Category</dt><dd>{{ item.category }}</dd></div><div><dt>Location</dt><dd>{{ item.location }}</dd></div><div><dt>Condition</dt><dd>{{ item.condition }}</dd></div></dl>
+    <div class="card-actions">
+      {% if item.available_quantity > 0 %}<button class="button primary" data-modal-open="request-{{ item.id }}">Request loan</button>{% else %}<button class="button secondary" disabled>Unavailable</button>{% endif %}
+      {% if g.user.role == 'admin' %}<a class="button ghost" href="{{ url_for('equipment_edit', equipment_id=item.id) }}">Edit</a>{% endif %}
+    </div>
+  </article>
+  <dialog id="request-{{ item.id }}" class="modal">
+    <form method="post" action="{{ url_for('request_loan', equipment_id=item.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="modal-heading"><div><p class="eyebrow teal">Loan request</p><h2>{{ item.name }}</h2><p>{{ item.available_quantity }} currently available</p></div><button type="button" class="icon-button" data-modal-close aria-label="Close">×</button></div>
+      <label>Quantity<input type="number" name="quantity" min="1" max="{{ item.available_quantity }}" value="1" required></label>
+      <label>Due date<input type="date" name="due_date" min="{{ today().isoformat() }}" max="{{ max_due_date().isoformat() }}" required></label>
+      <label>Purpose<textarea name="purpose" rows="3" minlength="5" maxlength="250" placeholder="e.g. Media Studies assessment filming" required></textarea></label>
+      <div class="modal-actions"><button type="button" class="button ghost" data-modal-close>Cancel</button><button class="button primary" type="submit">Submit request</button></div>
+    </form>
+  </dialog>
+{% else %}<div class="empty-state panel"><span>⌕</span><h3>No matching equipment</h3><p>Try a broader search or clear the filters.</p></div>{% endfor %}
+</section>
+{% endblock %}
