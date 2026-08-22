@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Loans | EquipTrack{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow teal">Tracking</p><h1>{{ 'All loans' if g.user.role == 'admin' else 'My loans' }}</h1><p>{{ 'Review requests and track every borrowed item.' if g.user.role == 'admin' else 'Track your requests, due dates and returns.' }}</p></div><a class="button primary" href="{{ url_for('equipment_list') }}">Browse equipment</a></div>
+<section class="panel">
+  {% if loans %}<div class="table-scroll"><table><thead><tr><th>Equipment</th>{% if g.user.role == 'admin' %}<th>Borrower</th>{% endif %}<th>Requested</th><th>Due</th><th>Qty</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+  {% for loan in loans %}<tr>
+    <td><strong>{{ loan.equipment_name }}</strong><small>{{ loan.asset_code }} · {{ loan.purpose }}</small></td>
+    {% if g.user.role == 'admin' %}<td>{{ loan.full_name }}<small>@{{ loan.username }}</small></td>{% endif %}
+    <td>{{ loan.requested_at[:10] }}</td><td>{{ loan.due_date }}</td><td>{{ loan.quantity }}</td>
+    <td><span class="status {{ 'overdue' if is_overdue(loan) else loan.status }}">{{ 'Overdue' if is_overdue(loan) else loan.status|title }}</span>{% if loan.admin_note %}<small>{{ loan.admin_note }}</small>{% endif %}</td>
+    <td class="actions">
+      {% if g.user.role == 'admin' and loan.status == 'pending' %}
+      <form method="post" action="{{ url_for('loan_decision', loan_id=loan.id) }}" class="decision-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input name="admin_note" maxlength="250" placeholder="Optional note"><button class="mini approve" name="decision" value="approve">Approve</button><button class="mini deny" name="decision" value="deny">Deny</button></form>
+      {% elif loan.status == 'approved' %}<form method="post" action="{{ url_for('return_loan', loan_id=loan.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="mini approve">Mark returned</button></form>
+      {% elif loan.status == 'pending' %}<form method="post" action="{{ url_for('cancel_loan', loan_id=loan.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="mini deny">Cancel</button></form>{% endif %}
+    </td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty-state"><span>↗</span><h3>No loans to show</h3><p>Requests and borrowing history will appear here.</p></div>{% endif %}
+</section>
+{% endblock %}
+

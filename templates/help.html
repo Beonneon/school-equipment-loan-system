@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Help | EquipTrack{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow teal">User guide</p><h1>How to use EquipTrack</h1><p>Simple steps for borrowing and managing school equipment.</p></div></div>
+<div class="help-grid">
+  <section class="panel"><span class="step">1</span><h2>Find equipment</h2><p>Open <strong>Equipment</strong>. Search by item name or asset code, or filter by category. Each card shows stock, condition and storage location.</p></section>
+  <section class="panel"><span class="step">2</span><h2>Request a loan</h2><p>Select <strong>Request loan</strong>, enter a quantity, choose a due date within 30 days and explain the school-related purpose.</p></section>
+  <section class="panel"><span class="step">3</span><h2>Track approval</h2><p>Open <strong>My loans</strong>. Pending requests can be cancelled. Approved requests show the due date and any coordinator note.</p></section>
+  <section class="panel"><span class="step">4</span><h2>Return equipment</h2><p>When the item is physically returned, select <strong>Mark returned</strong>. Stock is restored and the transaction stays in your history.</p></section>
+</div>
+{% if g.user.role == 'admin' %}<section class="panel guide-section"><h2>Coordinator guide</h2><div class="two-column"><div><h3>Review requests</h3><p>Open <strong>All loans</strong>. Check the purpose, quantity, due date and current stock, then approve or deny with an optional note.</p></div><div><h3>Manage inventory</h3><p>Add or edit equipment from the catalogue. Quantities cannot be reduced below the number currently checked out.</p></div><div><h3>Monitor overdue items</h3><p>The dashboard highlights approved loans whose due date has passed. Open All loans to identify the borrower.</p></div><div><h3>Review activity</h3><p>The Audit log records authentication, equipment changes, decisions and returns for accountability.</p></div></div></section>{% endif %}
+<section class="panel guide-section"><h2>Safety and privacy</h2><ul><li>Never share your password; sign out on shared computers.</li><li>Only minimum account and loan details are stored.</li><li>All changes use protected forms and role checks.</li><li>Report damage or missing accessories to the coordinator before return.</li></ul></section>
+{% endblock %}
