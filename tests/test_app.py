@@ -89,6 +89,12 @@ def test_admin_routes_forbid_borrower(client):
     assert client.get("/admin/audit").status_code == 403
 
 
+def test_dashboard_renders_equipment_count_as_number(client):
+    response = login(client, "admin", "Admin123!")
+    assert b"<strong>4</strong>" in response.data
+    assert b"built-in method items" not in response.data
+
+
 def test_invalid_due_date_is_rejected(client):
     login(client)
     too_late = (date.today() + timedelta(days=31)).isoformat()
