@@ -90,6 +90,10 @@ def test_borrow_approve_and_return_updates_stock(app, client):
         ).fetchall()
         assert len(assigned) == 2
         assert all(row["status"] == "on_loan" for row in assigned)
+    client.post("/logout", data={"csrf_token": csrf(client)})
+    login(client)
+    dashboard = client.get("/dashboard")
+    assert b"Mark returned" in dashboard.data
     response = client.post("/loans/1/return", data={"csrf_token": csrf(client)}, follow_redirects=True)
     assert b"stock restored" in response.data
     with app.app_context():
