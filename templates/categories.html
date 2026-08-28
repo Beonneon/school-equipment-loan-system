@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Categories | EquipTrack{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow teal">Administration</p><h1>Equipment categories</h1><p>Add categories for new types of equipment or remove unused ones safely.</p></div></div>
+<div class="category-layout">
+  <form method="post" class="panel category-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Add a category</h2><p>New categories become available in equipment forms and catalogue filters.</p><label>Category name<input name="name" minlength="2" maxlength="50" placeholder="e.g. Art equipment" required></label><button class="button primary" type="submit">+ Add category</button></form>
+  <section class="panel"><div class="panel-heading"><div><h2>Current categories</h2><p>A category can be removed only when no active equipment uses it.</p></div></div><div class="category-list">{% for category in categories %}<div class="category-row"><div><strong>{{ category.name }}</strong><small>{{ category.equipment_count }} active item{{ '' if category.equipment_count == 1 else 's' }}</small></div><form method="post" action="{{ url_for('category_delete', category_id=category.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="remove-category" type="submit" {{ 'disabled' if category.equipment_count }}>Remove</button></form></div>{% endfor %}</div></section>
+</div>
+{% endblock %}

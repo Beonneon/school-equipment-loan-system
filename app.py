@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -25,6 +26,15 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from config import Config
 
 
+EQUIPMENT_IMAGES = {
+    "CAM-001": "images/camera.webp",
+    "LAP-014": "images/laptop.webp",
+    "SPT-008": "images/basketballs.webp",
+    "MUS-003": "images/guitar.webp",
+}
+LOAN_TIMES = [f"{hour:02d}:00" for hour in range(8, 18)]
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -34,6 +44,12 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('admin', 'borrower')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -63,6 +79,7 @@ CREATE TABLE IF NOT EXISTS loans (
     requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     approved_at TEXT,
     due_date TEXT NOT NULL,
+    pickup_time TEXT NOT NULL DEFAULT '09:00',
     returned_at TEXT,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'denied', 'returned', 'cancelled')
@@ -96,6 +113,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app.jinja_env.globals.update(
         today=date.today,
         max_due_date=lambda: date.today() + timedelta(days=30),
+        loan_times=LOAN_TIMES,
+        equipment_image=lambda asset_code: EQUIPMENT_IMAGES.get(asset_code),
         is_overdue=is_overdue,
     )
 
@@ -150,6 +169,9 @@ def close_db(_: BaseException | None = None) -> None:
 def init_db() -> None:
     db = get_db()
     db.executescript(SCHEMA)
+    loan_columns = {row["name"] for row in db.execute("PRAGMA table_info(loans)").fetchall()}
+    if "pickup_time" not in loan_columns:
+        db.execute("ALTER TABLE loans ADD COLUMN pickup_time TEXT NOT NULL DEFAULT '09:00'")
     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)",
@@ -171,6 +193,7 @@ def init_db() -> None:
                 ("MUS-003", "Yamaha Acoustic Guitar", "Instruments", "Full-size acoustic guitar with case.", "Music Room 2", 6, 6, "Fair"),
             ],
         )
+    db.execute("INSERT OR IGNORE INTO categories (name) SELECT DISTINCT category FROM equipment")
     db.commit()
 
 
@@ -220,6 +243,20 @@ def parse_due_date(raw: str) -> date:
     return due
 
 
+def validate_password(password: str) -> str | None:
+    if len(password) < 10:
+        return "Password must contain at least 10 characters."
+    if not re.search(r"[A-Z]", password):
+        return "Password must include an uppercase letter."
+    if not re.search(r"[a-z]", password):
+        return "Password must include a lowercase letter."
+    if not re.search(r"\d", password):
+        return "Password must include a number."
+    if not re.search(r"[^A-Za-z0-9]", password):
+        return "Password must include a symbol."
+    return None
+
+
 def register_routes(app: Flask) -> None:
     @app.get("/")
     def index() -> Any:
@@ -245,6 +282,46 @@ def register_routes(app: Flask) -> None:
                 get_db().commit()
                 return redirect(url_for("dashboard"))
         return render_template("login.html")
+
+    @app.route("/register", methods=("GET", "POST"))
+    def register() -> Any:
+        if g.user:
+            return redirect(url_for("dashboard"))
+        if request.method == "POST":
+            full_name = request.form.get("full_name", "").strip()
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            confirmation = request.form.get("password_confirmation", "")
+            accepted = request.form.get("accept_safety") == "yes"
+            error = None
+            if not (2 <= len(full_name) <= 80):
+                error = "Full name must be between 2 and 80 characters."
+            elif not re.fullmatch(r"[A-Za-z0-9._-]{3,30}", username):
+                error = "Username must be 3-30 letters, numbers, dots, hyphens or underscores."
+            elif password != confirmation:
+                error = "Passwords do not match."
+            elif validate_password(password):
+                error = validate_password(password)
+            elif not accepted:
+                error = "Confirm the account safety and privacy notice to continue."
+            if error:
+                flash(error, "error")
+            else:
+                db = get_db()
+                try:
+                    cursor = db.execute(
+                        "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'borrower')",
+                        (username, full_name, generate_password_hash(password)),
+                    )
+                    audit("account_registered", f"Borrower account @{username} registered", cursor.lastrowid)
+                    db.commit()
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    flash("That username is already registered.", "error")
+                else:
+                    flash("Account created. You can now sign in.", "success")
+                    return redirect(url_for("login"))
+        return render_template("register.html")
 
     @app.post("/logout")
     @login_required
@@ -308,9 +385,7 @@ def register_routes(app: Flask) -> None:
             params.append(category)
         sql += " ORDER BY category, name"
         items = get_db().execute(sql, params).fetchall()
-        categories = get_db().execute(
-            "SELECT DISTINCT category FROM equipment WHERE active=1 ORDER BY category"
-        ).fetchall()
+        categories = get_db().execute("SELECT name AS category FROM categories ORDER BY name").fetchall()
         return render_template("equipment.html", items=items, categories=categories, query=query, selected_category=category)
 
     @app.post("/equipment/<int:equipment_id>/request")
@@ -323,20 +398,23 @@ def register_routes(app: Flask) -> None:
         try:
             quantity = int(request.form.get("quantity", "1"))
             due = parse_due_date(request.form.get("due_date", ""))
+            pickup_time = request.form.get("pickup_time", "")
             purpose = request.form.get("purpose", "").strip()
             if quantity < 1 or quantity > item["available_quantity"]:
                 raise ValueError("Requested quantity is not currently available.")
             if len(purpose) < 5 or len(purpose) > 250:
                 raise ValueError("Purpose must be between 5 and 250 characters.")
+            if pickup_time not in LOAN_TIMES:
+                raise ValueError("Choose a pickup time between 8:00 and 17:00 on the hour.")
         except (ValueError, TypeError) as exc:
             flash(str(exc), "error")
             return redirect(url_for("equipment_list"))
         db.execute(
-            """INSERT INTO loans (user_id, equipment_id, quantity, purpose, due_date)
-               VALUES (?, ?, ?, ?, ?)""",
-            (g.user["id"], equipment_id, quantity, purpose, due.isoformat()),
+            """INSERT INTO loans (user_id, equipment_id, quantity, purpose, due_date, pickup_time)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (g.user["id"], equipment_id, quantity, purpose, due.isoformat(), pickup_time),
         )
-        audit("loan_requested", f"Requested {quantity} x {item['asset_code']} until {due.isoformat()}")
+        audit("loan_requested", f"Requested {quantity} x {item['asset_code']} at {pickup_time} until {due.isoformat()}")
         db.commit()
         flash("Loan request submitted for approval.", "success")
         return redirect(url_for("loans"))
@@ -442,17 +520,19 @@ def register_routes(app: Flask) -> None:
     @app.route("/admin/equipment/new", methods=("GET", "POST"))
     @admin_required
     def equipment_new() -> Any:
+        categories = get_db().execute("SELECT name FROM categories ORDER BY name").fetchall()
         if request.method == "POST":
             error = save_equipment(None)
             if error is None:
                 flash("Equipment added.", "success")
                 return redirect(url_for("equipment_list"))
             flash(error, "error")
-        return render_template("equipment_form.html", item=None)
+        return render_template("equipment_form.html", item=None, categories=categories)
 
     @app.route("/admin/equipment/<int:equipment_id>/edit", methods=("GET", "POST"))
     @admin_required
     def equipment_edit(equipment_id: int) -> Any:
+        categories = get_db().execute("SELECT name FROM categories ORDER BY name").fetchall()
         item = get_db().execute("SELECT * FROM equipment WHERE id=?", (equipment_id,)).fetchone()
         if item is None:
             abort(404)
@@ -462,7 +542,52 @@ def register_routes(app: Flask) -> None:
                 flash("Equipment updated.", "success")
                 return redirect(url_for("equipment_list"))
             flash(error, "error")
-        return render_template("equipment_form.html", item=item)
+        return render_template("equipment_form.html", item=item, categories=categories)
+
+    @app.route("/admin/categories", methods=("GET", "POST"))
+    @admin_required
+    def category_manager() -> Any:
+        db = get_db()
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()
+            if not (2 <= len(name) <= 50):
+                flash("Category name must be between 2 and 50 characters.", "error")
+            elif not re.fullmatch(r"[A-Za-z0-9 &/'-]+", name):
+                flash("Category name contains unsupported characters.", "error")
+            else:
+                try:
+                    db.execute("INSERT INTO categories (name) VALUES (?)", (name,))
+                    audit("category_created", f"Created category: {name}")
+                    db.commit()
+                    flash("Category added.", "success")
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    flash("That category already exists.", "warning")
+        categories = db.execute(
+            """SELECT c.*, COUNT(e.id) AS equipment_count FROM categories c
+               LEFT JOIN equipment e ON e.category = c.name AND e.active=1
+               GROUP BY c.id ORDER BY c.name"""
+        ).fetchall()
+        return render_template("categories.html", categories=categories)
+
+    @app.post("/admin/categories/<int:category_id>/delete")
+    @admin_required
+    def category_delete(category_id: int) -> Any:
+        db = get_db()
+        category = db.execute("SELECT * FROM categories WHERE id=?", (category_id,)).fetchone()
+        if category is None:
+            abort(404)
+        count = db.execute(
+            "SELECT COUNT(*) FROM equipment WHERE category=? AND active=1", (category["name"],)
+        ).fetchone()[0]
+        if count:
+            flash(f"Move or edit the {count} active equipment item(s) before removing this category.", "warning")
+        else:
+            db.execute("DELETE FROM categories WHERE id=?", (category_id,))
+            audit("category_deleted", f"Removed category: {category['name']}")
+            db.commit()
+            flash("Category removed.", "success")
+        return redirect(url_for("category_manager"))
 
     @app.get("/admin/audit")
     @admin_required
@@ -495,6 +620,8 @@ def save_equipment(equipment_id: int | None) -> str | None:
         return "Asset code must be 2-20 letters, numbers, hyphens or underscores."
     if min(len(name), len(category), len(location)) < 2:
         return "Name, category and location must each contain at least 2 characters."
+    if db.execute("SELECT 1 FROM categories WHERE name=? COLLATE NOCASE", (category,)).fetchone() is None:
+        return "Choose a category from the managed list."
     if total < 0 or total > 999:
         return "Total quantity must be between 0 and 999."
     if condition not in {"Excellent", "Good", "Fair", "Maintenance"}:

@@ -7,16 +7,15 @@
   {% for loan in loans %}<tr>
     <td><strong>{{ loan.equipment_name }}</strong><small>{{ loan.asset_code }} · {{ loan.purpose }}</small></td>
     {% if g.user.role == 'admin' %}<td>{{ loan.full_name }}<small>@{{ loan.username }}</small></td>{% endif %}
-    <td>{{ loan.requested_at[:10] }}</td><td>{{ loan.due_date }}</td><td>{{ loan.quantity }}</td>
+    <td>{{ loan.requested_at[:10] }}</td><td>{{ loan.due_date }}<small>Pickup {{ loan.pickup_time }}</small></td><td>{{ loan.quantity }}</td>
     <td><span class="status {{ 'overdue' if is_overdue(loan) else loan.status }}">{{ 'Overdue' if is_overdue(loan) else loan.status|title }}</span>{% if loan.admin_note %}<small>{{ loan.admin_note }}</small>{% endif %}</td>
     <td class="actions">
       {% if g.user.role == 'admin' and loan.status == 'pending' %}
       <form method="post" action="{{ url_for('loan_decision', loan_id=loan.id) }}" class="decision-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input name="admin_note" maxlength="250" placeholder="Optional note"><button class="mini approve" name="decision" value="approve">Approve</button><button class="mini deny" name="decision" value="deny">Deny</button></form>
-      {% elif loan.status == 'approved' %}<form method="post" action="{{ url_for('return_loan', loan_id=loan.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="mini approve">Mark returned</button></form>
+      {% elif loan.status == 'approved' %}<form method="post" action="{{ url_for('return_loan', loan_id=loan.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="return-action" type="submit"><span aria-hidden="true">✓</span> Mark returned</button></form>
       {% elif loan.status == 'pending' %}<form method="post" action="{{ url_for('cancel_loan', loan_id=loan.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="mini deny">Cancel</button></form>{% endif %}
     </td>
   </tr>{% endfor %}</tbody></table></div>
   {% else %}<div class="empty-state"><span>↗</span><h3>No loans to show</h3><p>Requests and borrowing history will appear here.</p></div>{% endif %}
 </section>
 {% endblock %}
-

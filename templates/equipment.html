@@ -11,6 +11,8 @@
 <section class="equipment-grid">
 {% for item in items %}
   <article class="equipment-card">
+    {% set image_path = equipment_image(item.asset_code) %}
+    {% if image_path %}<img class="equipment-photo" src="{{ url_for('static', filename=image_path) }}" alt="{{ item.name }} stored ready for loan" loading="lazy">{% endif %}
     <div class="equipment-top"><span class="category-icon">{{ {'Cameras':'◉','Laptops':'▰','Sports':'◍','Instruments':'♫'}.get(item.category, '◆') }}</span><span class="stock {{ 'none' if item.available_quantity == 0 }}">{{ item.available_quantity }} available</span></div>
     <div><p class="asset-code">{{ item.asset_code }}</p><h2>{{ item.name }}</h2><p>{{ item.description }}</p></div>
     <dl><div><dt>Category</dt><dd>{{ item.category }}</dd></div><div><dt>Location</dt><dd>{{ item.location }}</dd></div><div><dt>Condition</dt><dd>{{ item.condition }}</dd></div></dl>
@@ -25,6 +27,7 @@
       <div class="modal-heading"><div><p class="eyebrow teal">Loan request</p><h2>{{ item.name }}</h2><p>{{ item.available_quantity }} currently available</p></div><button type="button" class="icon-button" data-modal-close aria-label="Close">×</button></div>
       <label>Quantity<input type="number" name="quantity" min="1" max="{{ item.available_quantity }}" value="1" required></label>
       <label>Due date<input type="date" name="due_date" min="{{ today().isoformat() }}" max="{{ max_due_date().isoformat() }}" required></label>
+      <label>Pickup time<select name="pickup_time" required>{% for time in loan_times %}<option value="{{ time }}" {{ 'selected' if time == '09:00' }}>{{ time }}</option>{% endfor %}</select><span class="field-help">School pickup times are available hourly from 08:00 to 17:00.</span></label>
       <label>Purpose<textarea name="purpose" rows="3" minlength="5" maxlength="250" placeholder="e.g. Media Studies assessment filming" required></textarea></label>
       <div class="modal-actions"><button type="button" class="button ghost" data-modal-close>Cancel</button><button class="button primary" type="submit">Submit request</button></div>
     </form>

@@ -19,9 +19,9 @@
       <label>Username<input name="username" autocomplete="username" required autofocus></label>
       <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
       <button class="button primary full" type="submit">Sign in</button>
+      <p class="auth-switch">Need a borrower account? <a href="{{ url_for('register') }}">Create one securely</a></p>
       <div class="demo-note"><strong>Demo accounts</strong><span>Admin: admin / Admin123!</span><span>Borrower: student / Student123!</span></div>
     </form>
   </section>
 </main>
 {% endblock %}
-

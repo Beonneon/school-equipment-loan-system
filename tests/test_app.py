@@ -64,7 +64,7 @@ def test_borrow_approve_and_return_updates_stock(app, client):
     due = (date.today() + timedelta(days=7)).isoformat()
     response = client.post(
         "/equipment/1/request",
-        data={"quantity": "2", "due_date": due, "purpose": "Media assessment", "csrf_token": csrf(client)},
+        data={"quantity": "2", "due_date": due, "pickup_time": "10:00", "purpose": "Media assessment", "csrf_token": csrf(client)},
         follow_redirects=True,
     )
     assert b"submitted for approval" in response.data
@@ -100,7 +100,7 @@ def test_invalid_due_date_is_rejected(client):
     too_late = (date.today() + timedelta(days=31)).isoformat()
     response = client.post(
         "/equipment/1/request",
-        data={"quantity": "1", "due_date": too_late, "purpose": "Class project", "csrf_token": csrf(client)},
+        data={"quantity": "1", "due_date": too_late, "pickup_time": "09:00", "purpose": "Class project", "csrf_token": csrf(client)},
         follow_redirects=True,
     )
     assert b"maximum of 30 days" in response.data
@@ -109,7 +109,7 @@ def test_invalid_due_date_is_rejected(client):
 def test_admin_cannot_reduce_quantity_below_checked_out(app, client):
     login(client)
     due = (date.today() + timedelta(days=7)).isoformat()
-    client.post("/equipment/1/request", data={"quantity": "2", "due_date": due, "purpose": "Media work", "csrf_token": csrf(client)})
+    client.post("/equipment/1/request", data={"quantity": "2", "due_date": due, "pickup_time": "09:00", "purpose": "Media work", "csrf_token": csrf(client)})
     client.post("/logout", data={"csrf_token": csrf(client)})
     login(client, "admin", "Admin123!")
     client.post("/loans/1/decision", data={"decision": "approve", "admin_note": "", "csrf_token": csrf(client)})
@@ -123,3 +123,67 @@ def test_admin_cannot_reduce_quantity_below_checked_out(app, client):
         follow_redirects=True,
     )
     assert b"currently on loan" in response.data
+
+
+def test_borrower_can_register_with_strong_password(app, client):
+    client.get("/register")
+    response = client.post(
+        "/register",
+        data={
+            "full_name": "New Borrower",
+            "username": "new.borrower",
+            "password": "StrongPass9!",
+            "password_confirmation": "StrongPass9!",
+            "accept_safety": "yes",
+            "csrf_token": csrf(client),
+        },
+        follow_redirects=True,
+    )
+    assert b"Account created" in response.data
+    with app.app_context():
+        user = get_db().execute("SELECT * FROM users WHERE username='new.borrower'").fetchone()
+        assert user["role"] == "borrower"
+        assert user["password_hash"] != "StrongPass9!"
+
+
+def test_registration_rejects_weak_password(client):
+    client.get("/register")
+    response = client.post(
+        "/register",
+        data={
+            "full_name": "New Borrower", "username": "new.borrower", "password": "weak",
+            "password_confirmation": "weak", "accept_safety": "yes", "csrf_token": csrf(client),
+        },
+        follow_redirects=True,
+    )
+    assert b"at least 10 characters" in response.data
+
+
+def test_admin_can_add_and_remove_unused_category(app, client):
+    login(client, "admin", "Admin123!")
+    added = client.post(
+        "/admin/categories",
+        data={"name": "Art equipment", "csrf_token": csrf(client)},
+        follow_redirects=True,
+    )
+    assert b"Category added" in added.data
+    with app.app_context():
+        category_id = get_db().execute("SELECT id FROM categories WHERE name='Art equipment'").fetchone()[0]
+    removed = client.post(
+        f"/admin/categories/{category_id}/delete",
+        data={"csrf_token": csrf(client)},
+        follow_redirects=True,
+    )
+    assert b"Category removed" in removed.data
+
+
+def test_admin_cannot_remove_category_in_use(app, client):
+    login(client, "admin", "Admin123!")
+    with app.app_context():
+        category_id = get_db().execute("SELECT id FROM categories WHERE name='Cameras'").fetchone()[0]
+    response = client.post(
+        f"/admin/categories/{category_id}/delete",
+        data={"csrf_token": csrf(client)},
+        follow_redirects=True,
+    )
+    assert b"before removing this category" in response.data

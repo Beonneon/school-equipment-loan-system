@@ -5,8 +5,11 @@ EquipTrack is a secure, responsive web application for managing the borrowing an
 ## Features
 
 - Secure sign-in with hashed passwords and role-based access control
+- Borrower self-registration with strong-password rules and borrower-only role assignment
 - Searchable equipment catalogue with category filters and live stock counts
-- Loan requests with quantity, purpose and a maximum 30-day due date
+- Realistic equipment photography with accessible alternative text
+- Administrator-managed categories with safe removal rules
+- Loan requests with quantity, purpose, hourly pickup time and a maximum 30-day due date
 - Coordinator approval/denial workflow with optional notes
 - Transaction-safe stock updates on approval and return
 - Pending cancellation, return history and automatic overdue highlighting
@@ -79,11 +82,10 @@ For production, use HTTPS, set `SECRET_KEY`, remove demo credentials, establish 
 - `app.py` - application factory, schema, validation and routes
 - `config.py` - runtime configuration
 - `templates/` - accessible server-rendered pages
-- `static/` - responsive design and interactions
+- `static/` - responsive design, generated equipment imagery and interactions
 - `tests/` - automated workflow and security tests
 - `docs/TESTING.md` - test cases and browser QA evidence
 
 ## AI-use acknowledgement
 
 Generative AI was used with human oversight to help plan, implement, test, debug and document this project. The assessment brief explicitly permits specified AI use with acknowledgement. The student remains responsible for understanding the code, checking the results and explaining the system in the demonstration.
-

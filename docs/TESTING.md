@@ -4,7 +4,7 @@
 
 Command: `pytest -q`
 
-Result on 28 August 2026: **7 passed**.
+Result on 28 August 2026: **12 passed**.
 
 | Test | Expected outcome | Result |
 |---|---|---|
@@ -15,6 +15,10 @@ Result on 28 August 2026: **7 passed**.
 | Borrower opens admin route | Request is rejected with HTTP 403 | Pass |
 | Due date over 30 days | Request is rejected with a validation message | Pass |
 | Reduce stock below checked-out count | Inventory edit is rejected and stock remains consistent | Pass |
+| Strong borrower registration | Account is created with borrower role and a password hash | Pass |
+| Weak registration password | Account creation is rejected with a clear rule | Pass |
+| Add and remove unused category | Category becomes available and can be removed safely | Pass |
+| Remove category in use | Removal is blocked until equipment is reassigned | Pass |
 
 ## Browser and responsive QA
 
@@ -22,8 +26,11 @@ The running application was inspected in the in-app browser as an administrator.
 
 - Login labels and controls were available through accessible names.
 - Dashboard statistics displayed four equipment types and 27 available units.
-- Catalogue displayed four seeded categories with stock, location and condition.
+- Catalogue displayed four seeded categories with stock, location, condition and realistic images.
 - Request dialog opened correctly and defaulted to a seven-day due date.
+- Request dialog offered hourly pickup choices from 08:00 to 17:00.
+- Registration clearly presented password, role and privacy safeguards.
+- Return action was changed from a pale badge-like control to a high-contrast navy button.
 - Desktop screenshots were checked for clipping, overlap and alignment.
 - A 390 x 844 viewport exposed horizontal overflow in the first responsive build.
 - The grid was changed to use `minmax(0, 1fr)`, intrinsic control widths were constrained, and mobile card actions were allowed to wrap.
@@ -36,4 +43,3 @@ The running application was inspected in the in-app browser as an administrator.
 - Test a production WSGI server behind HTTPS.
 - Add database backup and restore exercises before real school use.
 - Conduct usability testing with several students and an equipment coordinator.
-

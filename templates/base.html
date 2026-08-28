@@ -24,6 +24,7 @@
         <a class="{{ 'active' if request.endpoint == 'loans' }}" href="{{ url_for('loans') }}">{{ 'All loans' if g.user.role == 'admin' else 'My loans' }}</a>
         {% if g.user.role == 'admin' %}
         <span class="nav-label">Administration</span>
+        <a class="{{ 'active' if request.endpoint in ('category_manager','category_delete') }}" href="{{ url_for('category_manager') }}">Categories</a>
         <a class="{{ 'active' if request.endpoint == 'audit_log' }}" href="{{ url_for('audit_log') }}">Audit log</a>
         {% endif %}
         <a class="{{ 'active' if request.endpoint == 'help_page' }}" href="{{ url_for('help_page') }}">Help & guide</a>
@@ -58,4 +59,3 @@
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>
-

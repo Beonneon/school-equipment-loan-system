@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Create account | EquipTrack{% endblock %}
+{% block public_content %}
+<main class="login-layout">
+  <section class="login-hero registration-hero">
+    <div class="brand light"><span class="brand-mark">E</span><span>EquipTrack<small>School loans</small></span></div>
+    <div><p class="eyebrow">Borrower registration</p><h1>Create a safer<br>equipment account.</h1><p>New registrations are borrower-only. Coordinator access cannot be selected or granted from this form.</p></div>
+    <p class="hero-foot">Only your name, username and loan activity are stored.</p>
+  </section>
+  <section class="login-panel">
+    <form method="post" class="login-card register-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div><p class="eyebrow teal">New borrower</p><h2>Create your account</h2><p class="muted">Use a unique password you do not use elsewhere.</p></div>
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="alert {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+      <label>Full name<input name="full_name" maxlength="80" autocomplete="name" required></label>
+      <label>Username<input name="username" minlength="3" maxlength="30" pattern="[A-Za-z0-9._-]+" autocomplete="username" required></label>
+      <label>Password<input type="password" name="password" minlength="10" autocomplete="new-password" aria-describedby="password-rules" required></label>
+      <p id="password-rules" class="field-help">At least 10 characters with uppercase, lowercase, number and symbol.</p>
+      <label>Confirm password<input type="password" name="password_confirmation" minlength="10" autocomplete="new-password" required></label>
+      <label class="check-label"><input type="checkbox" name="accept_safety" value="yes" required><span>I understand that I must protect my password, sign out on shared devices, and use this account only for school equipment loans.</span></label>
+      <div class="security-note"><strong>Security & privacy</strong><span>Passwords are stored as salted hashes, forms use CSRF protection, and self-registration can create borrower accounts only.</span></div>
+      <button class="button primary full" type="submit">Create borrower account</button>
+      <p class="auth-switch">Already registered? <a href="{{ url_for('login') }}">Return to sign in</a></p>
+    </form>
+  </section>
+</main>
+{% endblock %}
