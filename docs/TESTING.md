@@ -4,7 +4,7 @@
 
 Command: `pytest -q`
 
-Result on 28 August 2026: **15 passed**.
+Result on 28 August 2026: **17 passed**.
 
 | Test | Expected outcome | Result |
 |---|---|---|
@@ -17,6 +17,8 @@ Result on 28 August 2026: **15 passed**.
 | Reduce stock below checked-out count | Inventory edit is rejected and stock remains consistent | Pass |
 | Strong borrower registration | Account is created with borrower role and a password hash | Pass |
 | Weak registration password | Account creation is rejected with a clear rule | Pass |
+| Incorrect school registration code | Account creation is blocked and the user is directed to the coordinator | Pass |
+| Public login credentials | Login page does not publish the sample admin or borrower passwords | Pass |
 | Add and remove unused category | Category becomes available and can be removed safely | Pass |
 | Remove category in use | Removal is blocked until equipment is reassigned | Pass |
 | Individual unit assignment and release | Approval assigns exact tags; return releases the same tags | Pass |

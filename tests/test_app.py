@@ -47,6 +47,12 @@ def test_login_success_and_failure(client):
     assert b"Sample" in success.data
 
 
+def test_login_page_does_not_publish_demo_credentials(client):
+    response = client.get("/login")
+    assert b"Demo accounts" not in response.data
+    assert b"Admin123!" not in response.data
+
+
 def test_unauthenticated_user_is_redirected(client):
     response = client.get("/equipment")
     assert response.status_code == 302
@@ -155,7 +161,7 @@ def test_borrower_can_register_with_strong_password(app, client):
             "username": "new.borrower",
             "password": "StrongPass9!",
             "password_confirmation": "StrongPass9!",
-            "accept_safety": "yes",
+            "school_code": "EQUIP2026",
             "csrf_token": csrf(client),
         },
         follow_redirects=True,
@@ -173,11 +179,25 @@ def test_registration_rejects_weak_password(client):
         "/register",
         data={
             "full_name": "New Borrower", "username": "new.borrower", "password": "weak",
-            "password_confirmation": "weak", "accept_safety": "yes", "csrf_token": csrf(client),
+            "password_confirmation": "weak", "school_code": "EQUIP2026", "csrf_token": csrf(client),
         },
         follow_redirects=True,
     )
     assert b"at least 10 characters" in response.data
+
+
+def test_registration_rejects_wrong_school_code(client):
+    client.get("/register")
+    response = client.post(
+        "/register",
+        data={
+            "full_name": "New Borrower", "username": "new.borrower", "password": "StrongPass9!",
+            "password_confirmation": "StrongPass9!", "school_code": "WRONG",
+            "csrf_token": csrf(client),
+        },
+        follow_redirects=True,
+    )
+    assert b"school registration code is incorrect" in response.data
 
 
 def test_admin_can_add_and_remove_unused_category(app, client):

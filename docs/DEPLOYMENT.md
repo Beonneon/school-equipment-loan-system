@@ -30,7 +30,7 @@ This project can be deployed as a short-lived single-instance Flask demonstratio
    ```powershell
    python -c "import secrets; print(secrets.token_urlsafe(48))"
    eb create equiptrack-demo --single --instance-type t3.micro
-   eb setenv APP_ENV=production SECRET_KEY=<paste-generated-value>
+   eb setenv APP_ENV=production SECRET_KEY=<paste-generated-value> REGISTRATION_CODE=<coordinator-code> ADMIN_PASSWORD=<admin-password> BORROWER_PASSWORD=<borrower-password>
    eb deploy
    eb status
    ```

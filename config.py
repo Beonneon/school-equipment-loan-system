@@ -7,6 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-change-me")
+    REGISTRATION_CODE = os.environ.get("REGISTRATION_CODE", "EQUIP2026")
     DATABASE = os.environ.get("DATABASE", str(BASE_DIR / "instance" / "equipment.db"))
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

@@ -5,7 +5,7 @@ EquipTrack is a secure, responsive web application for managing the borrowing an
 ## Features
 
 - Secure sign-in with hashed passwords and role-based access control
-- Borrower self-registration with strong-password rules and borrower-only role assignment
+- Borrower self-registration with a coordinator-issued school code, strong-password rules and borrower-only role assignment
 - Searchable equipment catalogue with category filters and live stock counts
 - Realistic equipment photography with accessible alternative text
 - Administrator-managed categories with safe removal rules
@@ -32,14 +32,14 @@ python app.py
 
 Open <http://127.0.0.1:5000>.
 
-Demo accounts:
+Local demo accounts (not displayed by the app):
 
 | Role | Username | Password |
 |---|---|---|
 | Coordinator | `admin` | `Admin123!` |
 | Borrower | `student` | `Student123!` |
 
-The SQLite database is created automatically at `instance/equipment.db` with four sample equipment records. In a deployed environment, set a strong random `SECRET_KEY` environment variable and replace the demo credentials.
+The SQLite database is created automatically at `instance/equipment.db` with four sample equipment records. In a deployed environment, set strong `SECRET_KEY`, `ADMIN_PASSWORD`, `BORROWER_PASSWORD` and `REGISTRATION_CODE` environment variables.
 
 ## Test
 
@@ -90,7 +90,7 @@ For production, use HTTPS, set `SECRET_KEY`, remove demo credentials, establish 
 
 ## AWS demo deployment
 
-The repository includes an Elastic Beanstalk-compatible `application.py`, `Procfile` and `.ebignore`. The production configuration requires `APP_ENV=production` and a strong `SECRET_KEY`. See `docs/DEPLOYMENT.md` before creating an environment because Elastic Beanstalk launches chargeable AWS resources.
+The repository includes an Elastic Beanstalk-compatible `application.py`, `Procfile` and `.ebignore`. The production configuration requires `APP_ENV=production`, a strong `SECRET_KEY` and a coordinator-controlled `REGISTRATION_CODE`. See `docs/DEPLOYMENT.md` because Elastic Beanstalk/CloudFront create chargeable AWS resources.
 
 ## AI-use acknowledgement
 

@@ -201,6 +201,16 @@ def init_db() -> None:
                 ("student", "Sample Student", generate_password_hash("Student123!"), "borrower"),
             ],
         )
+    credential_overrides = {
+        "admin": os.environ.get("ADMIN_PASSWORD"),
+        "student": os.environ.get("BORROWER_PASSWORD"),
+    }
+    for username, password in credential_overrides.items():
+        if password:
+            db.execute(
+                "UPDATE users SET password_hash=? WHERE username=? COLLATE NOCASE",
+                (generate_password_hash(password), username),
+            )
     if db.execute("SELECT COUNT(*) FROM equipment").fetchone()[0] == 0:
         db.executemany(
             """INSERT INTO equipment
@@ -391,7 +401,7 @@ def register_routes(app: Flask) -> None:
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             confirmation = request.form.get("password_confirmation", "")
-            accepted = request.form.get("accept_safety") == "yes"
+            school_code = request.form.get("school_code", "")
             error = None
             if not (2 <= len(full_name) <= 80):
                 error = "Full name must be between 2 and 80 characters."
@@ -401,8 +411,8 @@ def register_routes(app: Flask) -> None:
                 error = "Passwords do not match."
             elif validate_password(password):
                 error = validate_password(password)
-            elif not accepted:
-                error = "Confirm the account safety and privacy notice to continue."
+            elif not hmac.compare_digest(school_code, app.config["REGISTRATION_CODE"]):
+                error = "The school registration code is incorrect. Ask the equipment coordinator for the current code."
             if error:
                 flash(error, "error")
             else:
