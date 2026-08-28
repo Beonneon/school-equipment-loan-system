@@ -4,7 +4,7 @@
 
 Command: `pytest -q`
 
-Result on 28 August 2026: **12 passed**.
+Result on 28 August 2026: **15 passed**.
 
 | Test | Expected outcome | Result |
 |---|---|---|
@@ -19,6 +19,10 @@ Result on 28 August 2026: **12 passed**.
 | Weak registration password | Account creation is rejected with a clear rule | Pass |
 | Add and remove unused category | Category becomes available and can be removed safely | Pass |
 | Remove category in use | Removal is blocked until equipment is reassigned | Pass |
+| Individual unit assignment and release | Approval assigns exact tags; return releases the same tags | Pass |
+| Seeded unit ID uniqueness | Every active physical unit has one unique tag | Pass |
+| Add and retire unit | Stock totals recalculate from the physical-unit records | Pass |
+| Health endpoint | Database-backed health check returns HTTP 200 | Pass |
 
 ## Browser and responsive QA
 

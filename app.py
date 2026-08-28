@@ -87,6 +87,23 @@ CREATE TABLE IF NOT EXISTS loans (
     admin_note TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS asset_units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    equipment_id INTEGER NOT NULL REFERENCES equipment(id),
+    asset_tag TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    condition TEXT NOT NULL CHECK (condition IN ('Excellent', 'Good', 'Fair', 'Maintenance')),
+    status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'on_loan', 'retired')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS loan_units (
+    loan_id INTEGER NOT NULL REFERENCES loans(id),
+    unit_id INTEGER NOT NULL REFERENCES asset_units(id),
+    assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    released_at TEXT,
+    PRIMARY KEY (loan_id, unit_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),
@@ -98,6 +115,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_equipment_category ON equipment(category);
 CREATE INDEX IF NOT EXISTS idx_loans_user ON loans(user_id);
 CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
+CREATE INDEX IF NOT EXISTS idx_asset_units_equipment ON asset_units(equipment_id);
+CREATE INDEX IF NOT EXISTS idx_asset_units_status ON asset_units(status);
 """
 
 
@@ -106,6 +125,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app.config.from_object(Config)
     if test_config:
         app.config.update(test_config)
+    if os.environ.get("APP_ENV") == "production" and app.config["SECRET_KEY"] == "development-only-change-me":
+        raise RuntimeError("SECRET_KEY must be set for production deployment.")
 
     Path(app.config["DATABASE"]).parent.mkdir(parents=True, exist_ok=True)
 
@@ -194,7 +215,80 @@ def init_db() -> None:
             ],
         )
     db.execute("INSERT OR IGNORE INTO categories (name) SELECT DISTINCT category FROM equipment")
+    for item in db.execute("SELECT * FROM equipment").fetchall():
+        sync_asset_units(item["id"], item["asset_code"], item["total_quantity"], item["condition"])
+    active_loans = db.execute(
+        """SELECT l.* FROM loans l
+           WHERE l.status='approved' AND NOT EXISTS (
+               SELECT 1 FROM loan_units lu WHERE lu.loan_id=l.id AND lu.released_at IS NULL
+           ) ORDER BY l.approved_at, l.id"""
+    ).fetchall()
+    for loan in active_loans:
+        units = db.execute(
+            "SELECT id FROM asset_units WHERE equipment_id=? AND status='available' ORDER BY asset_tag LIMIT ?",
+            (loan["equipment_id"], loan["quantity"]),
+        ).fetchall()
+        for unit in units:
+            db.execute("UPDATE asset_units SET status='on_loan' WHERE id=?", (unit["id"],))
+            db.execute("INSERT OR IGNORE INTO loan_units (loan_id, unit_id) VALUES (?, ?)", (loan["id"], unit["id"]))
+    refresh_equipment_availability()
     db.commit()
+
+
+def next_asset_tag(asset_code: str) -> str:
+    db = get_db()
+    prefix = f"{asset_code}-U"
+    existing = {
+        row["asset_tag"].upper()
+        for row in db.execute("SELECT asset_tag FROM asset_units WHERE asset_tag LIKE ?", (f"{prefix}%",)).fetchall()
+    }
+    number = 1
+    while f"{prefix}{number:03d}".upper() in existing:
+        number += 1
+    return f"{prefix}{number:03d}"
+
+
+def sync_asset_units(equipment_id: int, asset_code: str, target_total: int, condition: str) -> str | None:
+    db = get_db()
+    active_units = db.execute(
+        "SELECT * FROM asset_units WHERE equipment_id=? AND status!='retired' ORDER BY id", (equipment_id,)
+    ).fetchall()
+    difference = target_total - len(active_units)
+    if difference > 0:
+        for _ in range(difference):
+            db.execute(
+                "INSERT INTO asset_units (equipment_id, asset_tag, condition) VALUES (?, ?, ?)",
+                (equipment_id, next_asset_tag(asset_code), condition),
+            )
+    elif difference < 0:
+        available = db.execute(
+            "SELECT id FROM asset_units WHERE equipment_id=? AND status='available' ORDER BY id DESC LIMIT ?",
+            (equipment_id, -difference),
+        ).fetchall()
+        if len(available) < -difference:
+            return "Reduce or return assigned units before lowering the total quantity."
+        for unit in available:
+            db.execute("UPDATE asset_units SET status='retired' WHERE id=?", (unit["id"],))
+    return None
+
+
+def refresh_equipment_availability(equipment_id: int | None = None) -> None:
+    db = get_db()
+    if equipment_id is None:
+        items = db.execute("SELECT id FROM equipment").fetchall()
+    else:
+        items = [{"id": equipment_id}]
+    for item in items:
+        available = db.execute(
+            "SELECT COUNT(*) FROM asset_units WHERE equipment_id=? AND status='available'", (item["id"],)
+        ).fetchone()[0]
+        total = db.execute(
+            "SELECT COUNT(*) FROM asset_units WHERE equipment_id=? AND status!='retired'", (item["id"],)
+        ).fetchone()[0]
+        db.execute(
+            "UPDATE equipment SET total_quantity=?, available_quantity=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (total, available, item["id"]),
+        )
 
 
 def login_required(view: Callable[..., Any]) -> Callable[..., Any]:
@@ -261,6 +355,11 @@ def register_routes(app: Flask) -> None:
     @app.get("/")
     def index() -> Any:
         return redirect(url_for("dashboard" if g.user else "login"))
+
+    @app.get("/health")
+    def health() -> tuple[dict[str, str], int]:
+        get_db().execute("SELECT 1").fetchone()
+        return {"status": "healthy"}, 200
 
     @app.route("/login", methods=("GET", "POST"))
     def login() -> Any:
@@ -346,7 +445,9 @@ def register_routes(app: Flask) -> None:
                 (date.today().isoformat(),),
             ).fetchone()[0]
             recent = db.execute(
-                """SELECT l.*, u.full_name, e.name AS equipment_name, e.asset_code
+                """SELECT l.*, u.full_name, e.name AS equipment_name, e.asset_code,
+                   (SELECT GROUP_CONCAT(au.asset_tag, ', ') FROM loan_units lu
+                    JOIN asset_units au ON au.id=lu.unit_id WHERE lu.loan_id=l.id) AS asset_tags
                    FROM loans l JOIN users u ON u.id=l.user_id
                    JOIN equipment e ON e.id=l.equipment_id
                    ORDER BY l.requested_at DESC LIMIT 8"""
@@ -361,7 +462,9 @@ def register_routes(app: Flask) -> None:
                 (g.user["id"], date.today().isoformat()),
             ).fetchone()[0]
             recent = db.execute(
-                """SELECT l.*, u.full_name, e.name AS equipment_name, e.asset_code
+                """SELECT l.*, u.full_name, e.name AS equipment_name, e.asset_code,
+                   (SELECT GROUP_CONCAT(au.asset_tag, ', ') FROM loan_units lu
+                    JOIN asset_units au ON au.id=lu.unit_id WHERE lu.loan_id=l.id) AS asset_tags
                    FROM loans l JOIN users u ON u.id=l.user_id
                    JOIN equipment e ON e.id=l.equipment_id
                    WHERE l.user_id=? ORDER BY l.requested_at DESC LIMIT 8""",
@@ -423,7 +526,9 @@ def register_routes(app: Flask) -> None:
     @login_required
     def loans() -> Any:
         db = get_db()
-        sql = """SELECT l.*, u.full_name, u.username, e.name AS equipment_name, e.asset_code
+        sql = """SELECT l.*, u.full_name, u.username, e.name AS equipment_name, e.asset_code,
+                 (SELECT GROUP_CONCAT(au.asset_tag, ', ') FROM loan_units lu
+                  JOIN asset_units au ON au.id=lu.unit_id WHERE lu.loan_id=l.id) AS asset_tags
                  FROM loans l JOIN users u ON u.id=l.user_id
                  JOIN equipment e ON e.id=l.equipment_id"""
         params: tuple[Any, ...] = ()
@@ -454,15 +559,24 @@ def register_routes(app: Flask) -> None:
         elif decision == "approve" and loan["quantity"] > loan["available_quantity"]:
             flash("Not enough stock is available to approve this request.", "error")
         elif decision == "approve":
-            db.execute(
-                "UPDATE equipment SET available_quantity=available_quantity-?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (loan["quantity"], loan["equipment_id"]),
-            )
+            units = db.execute(
+                "SELECT id, asset_tag FROM asset_units WHERE equipment_id=? AND status='available' ORDER BY asset_tag LIMIT ?",
+                (loan["equipment_id"], loan["quantity"]),
+            ).fetchall()
+            if len(units) != loan["quantity"]:
+                db.rollback()
+                flash("Not enough individually tagged units are available.", "error")
+                return redirect(url_for("loans"))
+            for unit in units:
+                db.execute("UPDATE asset_units SET status='on_loan' WHERE id=?", (unit["id"],))
+                db.execute("INSERT INTO loan_units (loan_id, unit_id) VALUES (?, ?)", (loan_id, unit["id"]))
             db.execute(
                 "UPDATE loans SET status='approved', approved_at=CURRENT_TIMESTAMP, admin_note=? WHERE id=?",
                 (note, loan_id),
             )
-            audit("loan_approved", f"Approved loan #{loan_id} for {loan['asset_code']}")
+            refresh_equipment_availability(loan["equipment_id"])
+            tags = ", ".join(unit["asset_tag"] for unit in units)
+            audit("loan_approved", f"Approved loan #{loan_id} for units {tags}")
             flash("Loan approved and stock updated.", "success")
         else:
             db.execute("UPDATE loans SET status='denied', admin_note=? WHERE id=?", (note, loan_id))
@@ -508,11 +622,17 @@ def register_routes(app: Flask) -> None:
             db.execute(
                 "UPDATE loans SET status='returned', returned_at=CURRENT_TIMESTAMP WHERE id=?", (loan_id,)
             )
-            db.execute(
-                "UPDATE equipment SET available_quantity=available_quantity+?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (loan["quantity"], loan["equipment_id"]),
-            )
-            audit("equipment_returned", f"Returned loan #{loan_id} ({loan['asset_code']})")
+            units = db.execute(
+                """SELECT au.id, au.asset_tag FROM loan_units lu JOIN asset_units au ON au.id=lu.unit_id
+                   WHERE lu.loan_id=? AND lu.released_at IS NULL""",
+                (loan_id,),
+            ).fetchall()
+            for unit in units:
+                db.execute("UPDATE asset_units SET status='available' WHERE id=?", (unit["id"],))
+            db.execute("UPDATE loan_units SET released_at=CURRENT_TIMESTAMP WHERE loan_id=? AND released_at IS NULL", (loan_id,))
+            refresh_equipment_availability(loan["equipment_id"])
+            tags = ", ".join(unit["asset_tag"] for unit in units)
+            audit("equipment_returned", f"Returned loan #{loan_id}: {tags or loan['asset_code']}")
             db.commit()
             flash("Equipment returned and stock restored.", "success")
         return redirect(url_for("loans"))
@@ -543,6 +663,67 @@ def register_routes(app: Flask) -> None:
                 return redirect(url_for("equipment_list"))
             flash(error, "error")
         return render_template("equipment_form.html", item=item, categories=categories)
+
+    @app.get("/admin/equipment/<int:equipment_id>/units")
+    @admin_required
+    def equipment_units(equipment_id: int) -> Any:
+        db = get_db()
+        item = db.execute("SELECT * FROM equipment WHERE id=?", (equipment_id,)).fetchone()
+        if item is None:
+            abort(404)
+        units = db.execute(
+            """SELECT au.*,
+               (SELECT u.full_name FROM loan_units lu JOIN loans l ON l.id=lu.loan_id
+                JOIN users u ON u.id=l.user_id WHERE lu.unit_id=au.id
+                AND lu.released_at IS NULL AND l.status='approved' LIMIT 1) AS borrower,
+               (SELECT l.id FROM loan_units lu JOIN loans l ON l.id=lu.loan_id
+                WHERE lu.unit_id=au.id AND lu.released_at IS NULL AND l.status='approved' LIMIT 1) AS loan_id
+               FROM asset_units au WHERE au.equipment_id=? ORDER BY au.status='retired', au.asset_tag""",
+            (equipment_id,),
+        ).fetchall()
+        return render_template("equipment_units.html", item=item, units=units)
+
+    @app.post("/admin/equipment/<int:equipment_id>/units/add")
+    @admin_required
+    def equipment_unit_add(equipment_id: int) -> Any:
+        db = get_db()
+        item = db.execute("SELECT * FROM equipment WHERE id=?", (equipment_id,)).fetchone()
+        if item is None:
+            abort(404)
+        asset_tag = request.form.get("asset_tag", "").strip().upper() or next_asset_tag(item["asset_code"])
+        if not re.fullmatch(r"[A-Z0-9._-]{3,40}", asset_tag):
+            flash("Unit ID must be 3-40 letters, numbers, dots, hyphens or underscores.", "error")
+        else:
+            try:
+                db.execute(
+                    "INSERT INTO asset_units (equipment_id, asset_tag, condition) VALUES (?, ?, ?)",
+                    (equipment_id, asset_tag, item["condition"]),
+                )
+                refresh_equipment_availability(equipment_id)
+                audit("asset_unit_created", f"Added physical unit {asset_tag} to {item['asset_code']}")
+                db.commit()
+                flash("Physical unit added.", "success")
+            except sqlite3.IntegrityError:
+                db.rollback()
+                flash("That unit ID is already in use.", "error")
+        return redirect(url_for("equipment_units", equipment_id=equipment_id))
+
+    @app.post("/admin/units/<int:unit_id>/retire")
+    @admin_required
+    def equipment_unit_retire(unit_id: int) -> Any:
+        db = get_db()
+        unit = db.execute("SELECT * FROM asset_units WHERE id=?", (unit_id,)).fetchone()
+        if unit is None:
+            abort(404)
+        if unit["status"] != "available":
+            flash("Only an available unit can be retired.", "warning")
+        else:
+            db.execute("UPDATE asset_units SET status='retired' WHERE id=?", (unit_id,))
+            refresh_equipment_availability(unit["equipment_id"])
+            audit("asset_unit_retired", f"Retired physical unit {unit['asset_tag']}")
+            db.commit()
+            flash("Physical unit retired and stock updated.", "success")
+        return redirect(url_for("equipment_units", equipment_id=unit["equipment_id"]))
 
     @app.route("/admin/categories", methods=("GET", "POST"))
     @admin_required
@@ -628,12 +809,17 @@ def save_equipment(equipment_id: int | None) -> str | None:
         return "Choose a valid condition."
     try:
         if equipment_id is None:
-            db.execute(
+            cursor = db.execute(
                 """INSERT INTO equipment
                    (asset_code,name,category,description,location,total_quantity,available_quantity,condition)
                    VALUES (?,?,?,?,?,?,?,?)""",
                 (code, name, category, description[:500], location, total, total, condition),
             )
+            error = sync_asset_units(cursor.lastrowid, code, total, condition)
+            if error:
+                db.rollback()
+                return error
+            refresh_equipment_availability(cursor.lastrowid)
             audit("equipment_created", f"Created {code}: {name}")
         else:
             current = db.execute("SELECT * FROM equipment WHERE id=?", (equipment_id,)).fetchone()
@@ -645,6 +831,11 @@ def save_equipment(equipment_id: int | None) -> str | None:
                    total_quantity=?,available_quantity=?,condition=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (code, name, category, description[:500], location, total, total - checked_out, condition, equipment_id),
             )
+            error = sync_asset_units(equipment_id, code, total, condition)
+            if error:
+                db.rollback()
+                return error
+            refresh_equipment_availability(equipment_id)
             audit("equipment_updated", f"Updated {code}: {name}")
         db.commit()
     except sqlite3.IntegrityError:

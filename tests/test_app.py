@@ -53,6 +53,12 @@ def test_unauthenticated_user_is_redirected(client):
     assert "/login" in response.headers["Location"]
 
 
+def test_health_endpoint_checks_database(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "healthy"}
+
+
 def test_csrf_blocks_unprotected_post(client):
     client.get("/login")
     response = client.post("/login", data={"username": "student", "password": "Student123!"})
@@ -78,10 +84,21 @@ def test_borrow_approve_and_return_updates_stock(app, client):
     assert b"Loan approved" in response.data
     with app.app_context():
         assert get_db().execute("SELECT available_quantity FROM equipment WHERE id=1").fetchone()[0] == 2
+        assigned = get_db().execute(
+            """SELECT au.asset_tag, au.status FROM loan_units lu
+               JOIN asset_units au ON au.id=lu.unit_id WHERE lu.loan_id=1"""
+        ).fetchall()
+        assert len(assigned) == 2
+        assert all(row["status"] == "on_loan" for row in assigned)
     response = client.post("/loans/1/return", data={"csrf_token": csrf(client)}, follow_redirects=True)
     assert b"stock restored" in response.data
     with app.app_context():
         assert get_db().execute("SELECT available_quantity FROM equipment WHERE id=1").fetchone()[0] == 4
+        released = get_db().execute(
+            """SELECT au.status, lu.released_at FROM loan_units lu
+               JOIN asset_units au ON au.id=lu.unit_id WHERE lu.loan_id=1"""
+        ).fetchall()
+        assert all(row["status"] == "available" and row["released_at"] for row in released)
 
 
 def test_admin_routes_forbid_borrower(client):
@@ -187,3 +204,35 @@ def test_admin_cannot_remove_category_in_use(app, client):
         follow_redirects=True,
     )
     assert b"before removing this category" in response.data
+
+
+def test_every_seeded_physical_unit_has_unique_id(app):
+    with app.app_context():
+        db = get_db()
+        total = db.execute("SELECT SUM(total_quantity) FROM equipment").fetchone()[0]
+        units = db.execute("SELECT asset_tag FROM asset_units WHERE status!='retired'").fetchall()
+        assert len(units) == total
+        assert len({row["asset_tag"] for row in units}) == total
+
+
+def test_admin_can_add_and_retire_available_physical_unit(app, client):
+    login(client, "admin", "Admin123!")
+    added = client.post(
+        "/admin/equipment/1/units/add",
+        data={"asset_tag": "CAMERA-LAB-99", "csrf_token": csrf(client)},
+        follow_redirects=True,
+    )
+    assert b"Physical unit added" in added.data
+    with app.app_context():
+        db = get_db()
+        unit = db.execute("SELECT * FROM asset_units WHERE asset_tag='CAMERA-LAB-99'").fetchone()
+        assert db.execute("SELECT total_quantity FROM equipment WHERE id=1").fetchone()[0] == 5
+        unit_id = unit["id"]
+    retired = client.post(
+        f"/admin/units/{unit_id}/retire",
+        data={"csrf_token": csrf(client)},
+        follow_redirects=True,
+    )
+    assert b"Physical unit retired" in retired.data
+    with app.app_context():
+        assert get_db().execute("SELECT total_quantity FROM equipment WHERE id=1").fetchone()[0] == 4

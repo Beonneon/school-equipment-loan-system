@@ -9,6 +9,7 @@ EquipTrack is a secure, responsive web application for managing the borrowing an
 - Searchable equipment catalogue with category filters and live stock counts
 - Realistic equipment photography with accessible alternative text
 - Administrator-managed categories with safe removal rules
+- Permanent unique ID for every physical unit, assigned on approval and released on return
 - Loan requests with quantity, purpose, hourly pickup time and a maximum 30-day due date
 - Coordinator approval/denial workflow with optional notes
 - Transaction-safe stock updates on approval and return
@@ -85,6 +86,11 @@ For production, use HTTPS, set `SECRET_KEY`, remove demo credentials, establish 
 - `static/` - responsive design, generated equipment imagery and interactions
 - `tests/` - automated workflow and security tests
 - `docs/TESTING.md` - test cases and browser QA evidence
+- `docs/DEPLOYMENT.md` - Elastic Beanstalk demo deployment and cleanup guide
+
+## AWS demo deployment
+
+The repository includes an Elastic Beanstalk-compatible `application.py`, `Procfile` and `.ebignore`. The production configuration requires `APP_ENV=production` and a strong `SECRET_KEY`. See `docs/DEPLOYMENT.md` before creating an environment because Elastic Beanstalk launches chargeable AWS resources.
 
 ## AI-use acknowledgement
 

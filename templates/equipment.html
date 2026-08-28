@@ -16,6 +16,7 @@
     <div class="equipment-top"><span class="category-icon">{{ {'Cameras':'◉','Laptops':'▰','Sports':'◍','Instruments':'♫'}.get(item.category, '◆') }}</span><span class="stock {{ 'none' if item.available_quantity == 0 }}">{{ item.available_quantity }} available</span></div>
     <div><p class="asset-code">{{ item.asset_code }}</p><h2>{{ item.name }}</h2><p>{{ item.description }}</p></div>
     <dl><div><dt>Category</dt><dd>{{ item.category }}</dd></div><div><dt>Location</dt><dd>{{ item.location }}</dd></div><div><dt>Condition</dt><dd>{{ item.condition }}</dd></div></dl>
+    <div class="unit-summary"><span>{{ item.total_quantity }} tagged unit{{ '' if item.total_quantity == 1 else 's' }}</span>{% if g.user.role == 'admin' %}<a href="{{ url_for('equipment_units', equipment_id=item.id) }}">View IDs →</a>{% endif %}</div>
     <div class="card-actions">
       {% if item.available_quantity > 0 %}<button class="button primary" data-modal-open="request-{{ item.id }}">Request loan</button>{% else %}<button class="button secondary" disabled>Unavailable</button>{% endif %}
       {% if g.user.role == 'admin' %}<a class="button ghost" href="{{ url_for('equipment_edit', equipment_id=item.id) }}">Edit</a>{% endif %}
