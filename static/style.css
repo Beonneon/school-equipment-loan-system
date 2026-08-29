@@ -45,3 +45,9 @@ h1,h2{overflow-wrap:anywhere}
 @media(min-width:761px){.app-shell{background:linear-gradient(to right,var(--navy) 0,var(--navy) 250px,var(--bg) 250px,var(--bg) 100%)}}
 .return-action.compact{padding:8px 11px;font-size:.7rem}.mini-link{font-size:.72rem;font-weight:700}
 @media(max-width:760px){.app-shell{background:var(--bg)}}
+
+/* Final alignment and desktop navigation behavior. */
+.stat-card .stat-icon{display:grid;place-items:center;line-height:1;text-align:center}
+.form-image-preview{display:block;width:min(360px,100%);aspect-ratio:3/2;object-fit:cover;border:1px solid var(--border);border-radius:10px;margin:6px 0 18px}
+@media(min-width:761px){.sidebar{position:fixed;inset:0 auto 0 0;width:250px;height:auto}.main-content{grid-column:2}}
+@media(max-width:760px){.main-content{grid-column:auto}}

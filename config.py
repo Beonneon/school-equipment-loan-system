@@ -9,11 +9,12 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-change-me")
     REGISTRATION_CODE = os.environ.get("REGISTRATION_CODE", "EQUIP2026")
     DATABASE = os.environ.get("DATABASE", str(BASE_DIR / "instance" / "equipment.db"))
+    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", str(BASE_DIR / "instance" / "uploads"))
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = os.environ.get("APP_ENV") == "production"
     PREFERRED_URL_SCHEME = "https" if os.environ.get("APP_ENV") == "production" else "http"
-    MAX_CONTENT_LENGTH = 1 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 8 * 1024 * 1024
 
 
 class TestConfig(Config):

@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import sqlite3
+import uuid
 from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
@@ -13,17 +14,22 @@ from typing import Any, Callable
 from flask import (
     Flask,
     abort,
+    current_app,
     flash,
     g,
     redirect,
     render_template,
     request,
+    send_from_directory,
     session,
     url_for,
 )
+from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config import Config
+
+Image.MAX_IMAGE_PIXELS = 25_000_000
 
 
 EQUIPMENT_IMAGES = {
@@ -59,6 +65,7 @@ CREATE TABLE IF NOT EXISTS equipment (
     name TEXT NOT NULL,
     category TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    image_filename TEXT,
     location TEXT NOT NULL,
     total_quantity INTEGER NOT NULL CHECK (total_quantity >= 0),
     available_quantity INTEGER NOT NULL CHECK (
@@ -129,6 +136,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         raise RuntimeError("SECRET_KEY must be set for production deployment.")
 
     Path(app.config["DATABASE"]).parent.mkdir(parents=True, exist_ok=True)
+    Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     app.teardown_appcontext(close_db)
     app.jinja_env.globals.update(
@@ -193,6 +201,9 @@ def init_db() -> None:
     loan_columns = {row["name"] for row in db.execute("PRAGMA table_info(loans)").fetchall()}
     if "pickup_time" not in loan_columns:
         db.execute("ALTER TABLE loans ADD COLUMN pickup_time TEXT NOT NULL DEFAULT '09:00'")
+    equipment_columns = {row["name"] for row in db.execute("PRAGMA table_info(equipment)").fetchall()}
+    if "image_filename" not in equipment_columns:
+        db.execute("ALTER TABLE equipment ADD COLUMN image_filename TEXT")
     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)",
@@ -370,6 +381,13 @@ def register_routes(app: Flask) -> None:
     def health() -> tuple[dict[str, str], int]:
         get_db().execute("SELECT 1").fetchone()
         return {"status": "healthy"}, 200
+
+    @app.get("/uploads/<path:filename>")
+    @login_required
+    def uploaded_equipment_image(filename: str) -> Any:
+        return send_from_directory(
+            current_app.config["UPLOAD_FOLDER"], filename, mimetype="image/webp"
+        )
 
     @app.route("/login", methods=("GET", "POST"))
     def login() -> Any:
@@ -817,17 +835,21 @@ def save_equipment(equipment_id: int | None) -> str | None:
         return "Total quantity must be between 0 and 999."
     if condition not in {"Excellent", "Good", "Fair", "Maintenance"}:
         return "Choose a valid condition."
+    new_image, image_error = save_equipment_image(request.files.get("image"))
+    if image_error:
+        return image_error
     try:
         if equipment_id is None:
             cursor = db.execute(
                 """INSERT INTO equipment
-                   (asset_code,name,category,description,location,total_quantity,available_quantity,condition)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (code, name, category, description[:500], location, total, total, condition),
+                   (asset_code,name,category,description,image_filename,location,total_quantity,available_quantity,condition)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (code, name, category, description[:500], new_image, location, total, total, condition),
             )
             error = sync_asset_units(cursor.lastrowid, code, total, condition)
             if error:
                 db.rollback()
+                discard_equipment_image(new_image)
                 return error
             refresh_equipment_availability(cursor.lastrowid)
             audit("equipment_created", f"Created {code}: {name}")
@@ -835,23 +857,56 @@ def save_equipment(equipment_id: int | None) -> str | None:
             current = db.execute("SELECT * FROM equipment WHERE id=?", (equipment_id,)).fetchone()
             checked_out = current["total_quantity"] - current["available_quantity"]
             if total < checked_out:
+                discard_equipment_image(new_image)
                 return f"Total cannot be below {checked_out}; that many units are currently on loan."
             db.execute(
-                """UPDATE equipment SET asset_code=?,name=?,category=?,description=?,location=?,
-                   total_quantity=?,available_quantity=?,condition=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                (code, name, category, description[:500], location, total, total - checked_out, condition, equipment_id),
+                """UPDATE equipment SET asset_code=?,name=?,category=?,description=?,
+                   image_filename=COALESCE(?,image_filename),location=?,total_quantity=?,available_quantity=?,
+                   condition=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (code, name, category, description[:500], new_image, location, total, total - checked_out, condition, equipment_id),
             )
             error = sync_asset_units(equipment_id, code, total, condition)
             if error:
                 db.rollback()
+                discard_equipment_image(new_image)
                 return error
             refresh_equipment_availability(equipment_id)
+            if new_image and current["image_filename"]:
+                old_path = Path(current_app.config["UPLOAD_FOLDER"]) / current["image_filename"]
+                old_path.unlink(missing_ok=True)
             audit("equipment_updated", f"Updated {code}: {name}")
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
+        discard_equipment_image(new_image)
         return "That asset code is already in use."
     return None
+
+
+def save_equipment_image(upload) -> tuple[str | None, str | None]:
+    if upload is None or not upload.filename:
+        return None, None
+    extension = Path(upload.filename).suffix.lower()
+    if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
+        return None, "Upload a PNG, JPEG or WebP image."
+    try:
+        source = Image.open(upload.stream)
+        source.verify()
+        upload.stream.seek(0)
+        source = Image.open(upload.stream)
+        source = ImageOps.exif_transpose(source).convert("RGB")
+        source.thumbnail((1600, 1200), Image.Resampling.LANCZOS)
+        filename = f"equipment-{uuid.uuid4().hex}.webp"
+        destination = Path(current_app.config["UPLOAD_FOLDER"]) / filename
+        source.save(destination, "WEBP", quality=84, method=6)
+        return filename, None
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        return None, "The uploaded file is not a valid, safe image."
+
+
+def discard_equipment_image(filename: str | None) -> None:
+    if filename:
+        (Path(current_app.config["UPLOAD_FOLDER"]) / filename).unlink(missing_ok=True)
 
 
 app = create_app()

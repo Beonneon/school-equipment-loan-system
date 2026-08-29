@@ -1,6 +1,9 @@
 from datetime import date, timedelta
+from io import BytesIO
+from pathlib import Path
 
 import pytest
+from PIL import Image as PILImage
 
 from app import create_app, get_db
 
@@ -260,3 +263,30 @@ def test_admin_can_add_and_retire_available_physical_unit(app, client):
     assert b"Physical unit retired" in retired.data
     with app.app_context():
         assert get_db().execute("SELECT total_quantity FROM equipment WHERE id=1").fetchone()[0] == 4
+
+
+def test_admin_can_create_equipment_with_uploaded_image(app, client):
+    login(client, "admin", "Admin123!")
+    image_buffer = BytesIO()
+    PILImage.new("RGB", (320, 200), "#2f7f77").save(image_buffer, "PNG")
+    image_buffer.seek(0)
+    response = client.post(
+        "/admin/equipment/new",
+        data={
+            "asset_code": "CAM-900", "name": "Portable Video Camera", "category": "Cameras",
+            "description": "Compact camera for classroom recording.", "location": "Media Room B",
+            "total_quantity": "1", "condition": "Excellent", "csrf_token": csrf(client),
+            "image": (image_buffer, "camera-upload.png"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert b"Equipment added" in response.data
+    with app.app_context():
+        row = get_db().execute("SELECT image_filename FROM equipment WHERE asset_code='CAM-900'").fetchone()
+        assert row["image_filename"].endswith(".webp")
+        assert (Path(app.config["UPLOAD_FOLDER"]) / row["image_filename"]).exists()
+        image_url = f"/uploads/{row['image_filename']}"
+    uploaded = client.get(image_url)
+    assert uploaded.status_code == 200
+    assert uploaded.content_type == "image/webp"

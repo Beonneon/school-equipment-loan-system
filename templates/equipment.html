@@ -11,8 +11,12 @@
 <section class="equipment-grid">
 {% for item in items %}
   <article class="equipment-card">
-    {% set image_path = equipment_image(item.asset_code) %}
-    {% if image_path %}<img class="equipment-photo" src="{{ url_for('static', filename=image_path) }}" alt="{{ item.name }} stored ready for loan" loading="lazy">{% endif %}
+    {% if item.image_filename %}
+      <img class="equipment-photo" src="{{ url_for('uploaded_equipment_image', filename=item.image_filename) }}" alt="{{ item.name }} stored ready for loan" loading="lazy">
+    {% else %}
+      {% set image_path = equipment_image(item.asset_code) %}
+      {% if image_path %}<img class="equipment-photo" src="{{ url_for('static', filename=image_path) }}" alt="{{ item.name }} stored ready for loan" loading="lazy">{% endif %}
+    {% endif %}
     <div class="equipment-top"><span class="category-icon">{{ {'Cameras':'◉','Laptops':'▰','Sports':'◍','Instruments':'♫'}.get(item.category, '◆') }}</span><span class="stock {{ 'none' if item.available_quantity == 0 }}">{{ item.available_quantity }} available</span></div>
     <div><p class="asset-code">{{ item.asset_code }}</p><h2>{{ item.name }}</h2><p>{{ item.description }}</p></div>
     <dl><div><dt>Category</dt><dd>{{ item.category }}</dd></div><div><dt>Location</dt><dd>{{ item.location }}</dd></div><div><dt>Condition</dt><dd>{{ item.condition }}</dd></div></dl>
